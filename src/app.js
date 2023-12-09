@@ -13,15 +13,13 @@ connection.connect();
 
 app.listen(process.env.PORT);
 console.log('Listening on PORT: ' + process.env.PORT);
-express.json();
-let getResults = [];
+app.use(express.json());
 
-// To make below better, we need
 app.get('/qa/questions/', (req, res) => {
-  // Loads questions for productId, except reported ones. Should accept a page and count.
+  // Loads questions for productId, except reported ones.
   const perPage = req.query.count || 5;
   const page = req.query.page || 1;
-  const columnsToGrab =`questions.question_id,
+  const columnsToGrab = `questions.question_id,
                         questions.question_body,
                         questions.question_date,
                         questions.asker_name,
@@ -30,16 +28,16 @@ app.get('/qa/questions/', (req, res) => {
                         answers.body,
                         answers.date_written,
                         answers.answerer_name,
-                        answers.helpful,
+                        answers.answer_helpfulness,
                         answers_photos.answer_id,
                         answers_photos.url`;
   const query = (
     `SELECT ${columnsToGrab} FROM questions
       LEFT JOIN answers ON questions.question_id = answers.question_id
-      LEFT JOIN answers_photos ON answers.id = answers_photos.answer_id
+      LEFT JOIN answers_photos ON answers.answer_id = answers_photos.answer_id
       WHERE questions.product_id = ${req.query.product_id}
       AND answers.question_id = questions.question_id
-      AND answers_photos.answer_id = answers.id
+      AND answers_photos.answer_id = answers.answer_id
       AND questions.reported = 0
       AND answers.reported = 0
       LIMIT ${(page - 1) * perPage}, ${perPage};`
@@ -69,7 +67,7 @@ app.get('/qa/questions/', (req, res) => {
                 body: obj.body,
                 date: new Date(obj.date_written),
                 answerer_name: obj.answerer_name,
-                helpfulness: obj.helpful,
+                helpfulness: obj.answer_helpfulness,
                 photos: [],
               }
             }
@@ -99,54 +97,106 @@ app.get('/qa/questions/', (req, res) => {
 app.get('/qa/questions/:question_id/answers', (req, res) => {
   // Returns answers for a given question, except reported ones
   const perPage = req.query.count || 5;
-  const page = req.query.page || 5;
+  const page = req.query.page || 1;
   const questionId = req.params.question_id;
   const query = (
     `SELECT * FROM answers
-    LEFT JOIN answers_photos ON answers_photos.answer_id = answers.id
+    LEFT JOIN answers_photos ON answers_photos.answer_id = answers.answer_id
     WHERE answers.question_id = ${questionId}
-    AND answers_photos.answer_id = answers.id
-    AND answers.reported = 0;
+    AND answers_photos.answer_id = answers.answer_id
+    AND answers.reported = 0
     LIMIT ${(page - 1) * perPage}, ${perPage};`
   )
   connection.query(query, (err, results, fields) => {
     if (err) {
       throw err;
     } else {
-      res.status(200).send(results);
+      let response = {
+        question: questionId,
+        page: page,
+        count: perPage,
+        results: []
+      };
+      results.forEach(obj => {
+        const answerId = obj.answer_id;
+        let answerIsUnique = true;
+        for (var i = 0; i < response.results.length; i++) {
+          const answer = response.results[i];
+          if (answerId === answer.answer_id) {
+            answer.photos.push(obj.url);
+            answerIsUnique = false;
+            i = response.results.length;
+          }
+        }
+        if (answerIsUnique) {
+          let answer = {
+            answer_id: answerId,
+            body: obj.body,
+            date: obj.date_written,
+            answerer_name: obj.answerer_name,
+            helpfulness: obj.helpful,
+            photos: [obj.url],
+          };
+          response.results.push(answer);
+        }
+      })
+      res.status(200).send(response);
     }
   })
-})
+});
 
 app.post('/qa/questions', (req, res) => {
   // Adds a question for the given product
-  // const body = req.body.body || '';
-  // const name = req.body.name || null;
-  // const email = req.body.email || null;
-  // const product = req.body.product_id;
-  /*
-    INSERT INTO questions (columns) VALUES (values);
-  */
-})
+  const body = req.body.body || '';
+  const name = req.body.name || null;
+  const email = req.body.email || null;
+  const product = req.body.product_id;
+  const columns = 'product_id, question_body, question_date, asker_name, asker_email, reported, question_helpfulness';
+  const values = `${product}, '${body}', ${Date.now()}, '${name}', '${email}', 0, 0`;
+  const query = `INSERT INTO questions (${columns}) VALUES (${values})`;
+  connection.query(query, (err, results, fields) => {
+    if (err) {
+      throw err;
+    } else {
+      res.status(201).send(results);
+    }
+  });
+});
 
 // Answer a question
 app.post('/qa/questions/:questionId/answers', (req, res) => {
   // Adds an answer to a given question
-  // const question = req.params.question_id;
-  // const body = req.body.body;
-  // const name = req.body.name;
-  // const email = req.body.email;
-  // const photos = req.body.photos;
-  /*
-    INSERT INTO answers (columns) VALUES (values);
-    INSERT INTO answers_photos (columns) VALUES (values);
-  */
-  // Doing two inserts is painful. Might want to add the urls as an array somehow in the future.
-})
+  const question = req.params.question_id;
+  const body = req.body.body;
+  const name = req.body.name;
+  const email = req.body.email;
+  const photos = req.body.photos;
+  const columnsAnswers = 'question_id, body, date_written, answerer_name, answerer_email, reported, answer_helpfulness';
+  const columnsPhotos = 'answer_id, url';
+  const valuesAnswers = `${question}, '${body}', ${Date.now()}, '${name}', '${email}', 0, 0`
+  const queryAnswers = `INSERT INTO answers (${columnsAnswers}) VALUES (${valuesAnswers})`
+  connection.query(queryAnswers, (err, results, fields) => {
+    if (err) {
+      throw err;
+    } else {
+      const answerId = results.insertId;
+      try {
+        photos.forEach(photoUrl => {
+          const valuesPhotos = `${answerId}, '${photoUrl}'`;
+          const queryPhotos = `INSERT into answers_photos (${columnsPhotos}) VALUES (${valuesPhotos})`;
+          connection.query(queryPhotos, (err, results, fields) => {
+            if (err) throw err;
+          })
+        })
+        res.status(201).send()
+      } catch {
+        res.status(204).send('Failed to insert photos.')
+      }
+    }
+  })
+});
 
 // Marks a question as helpful
 app.put('/products/questions/answers/photos/:answerId', (req, res) => {
-  /*
 
-  */
 })
