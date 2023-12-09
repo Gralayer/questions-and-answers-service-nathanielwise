@@ -20,27 +20,27 @@ app.get('/qa/questions/', (req, res) => {
   const perPage = req.query.count || 5;
   const page = req.query.page || 1;
   const columnsToGrab = `questions.question_id,
-                        questions.question_body,
-                        questions.question_date,
-                        questions.asker_name,
-                        questions.question_helpfulness,
-                        questions.reported,
-                        answers.body,
-                        answers.date_written,
-                        answers.answerer_name,
-                        answers.answer_helpfulness,
-                        answers_photos.answer_id,
-                        answers_photos.url`;
+    questions.question_body,
+    questions.question_date,
+    questions.asker_name,
+    questions.question_helpfulness,
+    questions.reported,
+    answers.body,
+    answers.date_written,
+    answers.answerer_name,
+    answers.answer_helpfulness,
+    answers_photos.answer_id,
+    answers_photos.url`;
   const query = (
     `SELECT ${columnsToGrab} FROM questions
-      LEFT JOIN answers ON questions.question_id = answers.question_id
-      LEFT JOIN answers_photos ON answers.answer_id = answers_photos.answer_id
-      WHERE questions.product_id = ${req.query.product_id}
-      AND answers.question_id = questions.question_id
-      AND answers_photos.answer_id = answers.answer_id
-      AND questions.reported = 0
-      AND answers.reported = 0
-      LIMIT ${(page - 1) * perPage}, ${perPage};`
+    LEFT JOIN answers ON questions.question_id = answers.question_id
+    LEFT JOIN answers_photos ON answers.answer_id = answers_photos.answer_id
+    WHERE questions.product_id = ${req.query.product_id}
+    AND answers.question_id = questions.question_id
+    AND answers_photos.answer_id = answers.answer_id
+    AND questions.reported = 0
+    AND answers.reported = 0
+    LIMIT ${(page - 1) * perPage}, ${perPage};`
   );
   connection.query(query, (err, results, fields) => {
     if (err) {
@@ -197,6 +197,65 @@ app.post('/qa/questions/:questionId/answers', (req, res) => {
 });
 
 // Marks a question as helpful
-app.put('/products/questions/answers/photos/:answerId', (req, res) => {
+app.put('/products/questions/:question_id/helpful', (req, res) => {
+  const query = (
+    `UPDATE questions
+    SET question_helpfulness = question_helpfulness + 1
+    WHERE question_id = ${req.params.question_id}`
+  );
+  connection.query(query, (err, results, fields) => {
+    if (err) {
+      throw err;
+    } else {
+      res.status(204).send();
+    }
+  });
+});
 
-})
+// Updates a question to show it was reported
+app.put('/qa/questions/:question_id/report', (req, res) => {
+  const query = (
+    `UPDATE questions
+    SET reported = 1
+    WHERE question_id = ${req.params.question_id}`
+  );
+  connection.query(query, (err, results, fields) => {
+    if (err) {
+      throw err;
+    } else {
+      res.status(204).send();
+    }
+  });
+});
+
+// Updates an answer to show it was helpful
+app.put('/qa/answers/:answer_id/helpful', (req, res) => {
+  const query = (
+    `UPDATE answers
+    SET answer_helpfulness = answer_helpfulness + 1
+    WHERE answer_id = ${req.params.answer_id}`
+  );
+  connection.query(query, (err, results, fields) => {
+    if (err) {
+      throw err;
+    } else {
+      res.status(204).send();
+    }
+  });
+});
+
+// Updates an answer to show it has been reported.
+app.put('/qa/answers/:answer_id/report', (req, res) => {
+  const query = (
+    `UPDATE answers
+    SET reported = 1
+    WHERE answer_id = ${answer_id}`
+  );
+  connection.query(query, (err, results, fields) => {
+    if (err) {
+      throw err;
+    } else {
+      res.status(204).send();
+    }
+  });
+});
