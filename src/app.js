@@ -1,6 +1,7 @@
 const express = require('express');
 const mysql = require('mysql2');
 const app = express();
+const cors = require('cors');
 require('dotenv').config();
 
 const connection = mysql.createConnection({
@@ -9,11 +10,44 @@ const connection = mysql.createConnection({
   password: process.env.PASSWORD,
   database: process.env.DATABASE,
 })
+
 connection.connect();
 
 app.listen(process.env.PORT);
 console.log('Listening on PORT: ' + process.env.PORT);
+app.use(cors());
 app.use(express.json());
+
+app.get('/qa/questions/:limit', (req, res) => {
+  // Loads a limited number of questions.
+  const query = (
+    `SELECT * FROM questions
+    LIMIT ${req.params.limit};`
+  );
+  connection.query(query, (err, results, fields) => {
+    res.status(200).send(results);
+  });
+});
+
+app.get('/qa/questions/answers/:limit', (req, res) => {
+  const query = (
+    `SELECT * FROM answers
+    LIMIT ${req.params.limit};`
+  );
+  connection.query(query, (err, results, fields) => {
+    res.status(200).send(results);
+  });
+});
+
+app.get('/qa/questions/answers/photos/:limit', (req, res) => {
+  const query = (
+    `SELECT * FROM answers_photos
+    LIMIT ${req.params.limit};`
+  );
+  connection.query(query, (err, results, fields) => {
+    res.status(200).send(results);
+  })
+})
 
 app.get('/qa/questions/', (req, res) => {
   // Loads questions for productId, except reported ones.
@@ -152,7 +186,7 @@ app.post('/qa/questions', (req, res) => {
   const email = req.body.email || null;
   const product = req.body.product_id;
   const columns = 'product_id, question_body, question_date, asker_name, asker_email, reported, question_helpfulness';
-  const values = `${product}, '${body}', ${Date.now()}, '${name}', '${email}', 0, 0`;
+  const values = `${product}, "${body}", ${Date.now()}, "${name}", "${email}", 0, 0`;
   const query = `INSERT INTO questions (${columns}) VALUES (${values})`;
   connection.query(query, (err, results, fields) => {
     if (err) {
@@ -164,7 +198,7 @@ app.post('/qa/questions', (req, res) => {
 });
 
 // Answer a question
-app.post('/qa/questions/:questionId/answers', (req, res) => {
+app.post('/qa/questions/:question_id/answers', (req, res) => {
   // Adds an answer to a given question
   const question = req.params.question_id;
   const body = req.body.body;
@@ -173,7 +207,7 @@ app.post('/qa/questions/:questionId/answers', (req, res) => {
   const photos = req.body.photos;
   const columnsAnswers = 'question_id, body, date_written, answerer_name, answerer_email, reported, answer_helpfulness';
   const columnsPhotos = 'answer_id, url';
-  const valuesAnswers = `${question}, '${body}', ${Date.now()}, '${name}', '${email}', 0, 0`
+  const valuesAnswers = `${question}, "${body}", ${Date.now()}, "${name}", "${email}", 0, 0`
   const queryAnswers = `INSERT INTO answers (${columnsAnswers}) VALUES (${valuesAnswers})`
   connection.query(queryAnswers, (err, results, fields) => {
     if (err) {
@@ -197,7 +231,7 @@ app.post('/qa/questions/:questionId/answers', (req, res) => {
 });
 
 // Marks a question as helpful
-app.put('/products/questions/:question_id/helpful', (req, res) => {
+app.put('/qa/questions/:question_id/helpful', (req, res) => {
   const query = (
     `UPDATE questions
     SET question_helpfulness = question_helpfulness + 1
@@ -249,7 +283,7 @@ app.put('/qa/answers/:answer_id/report', (req, res) => {
   const query = (
     `UPDATE answers
     SET reported = 1
-    WHERE answer_id = ${answer_id}`
+    WHERE answer_id = ${req.params.answer_id}`
   );
   connection.query(query, (err, results, fields) => {
     if (err) {
@@ -259,3 +293,6 @@ app.put('/qa/answers/:answer_id/report', (req, res) => {
     }
   });
 });
+
+module.exports.app = app;
+module.exports.connection = connection;
